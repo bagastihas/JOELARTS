@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DAFTAR KERJAAN JOEL</title>
 <link rel="stylesheet" href="style.css">
+<!-- Script Supabase JS Client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body>
@@ -76,9 +78,15 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// Konfigurasi Supabase
+const SUPABASE_URL = 'https://zwaenwwuhsooleghmgm.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_M0EpE8T6dbW8sSNNgzCKIw_yMaQPP8d';
+
+// Inisialisasi klien Supabase
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 const ST={menunggu:'Menunggu Verifikasi',siap:'Siap Diproses',proses:'Sedang Diproses',revisi:'Perlu Revisi',selesai:'Selesai'};
 const COL={menunggu:'var(--c1)',siap:'var(--c2)',proses:'var(--c3)',revisi:'var(--c4)',selesai:'var(--c5)'};
-const KEY='erp-desain-v1';
 const pad=n=>String(n).padStart(2,'0');
 const dkey=d=>{d=new Date(d);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
 const now=()=>new Date().toISOString();
@@ -87,33 +95,67 @@ const $=id=>document.getElementById(id);
 const fmt=d=>d?new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'-';
 const fmtT=d=>new Date(d).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
 
-function seed(){
- const D=n=>{const d=new Date();d.setDate(d.getDate()-n);return d.toISOString()};
- const mk=(i,nama,klien,kat,pri,st,ago,extra={})=>({id:'DSN-'+String(i).padStart(3,'0'),nama,klien,kat,pri,dl:dkey(D(-3)),desk:'Brief awal desain.',status:st,dibuat:D(ago),hasil:'',img:'',catatan:'',rev:0,...extra});
- return{seq:9,items:[
-  mk(1,'Logo Kedai Kopi Senja','Kedai Senja','Branding','Tinggi','selesai',6,{selesai:D(5),hasil:'Logo final + panduan warna.'}),
-  mk(2,'Banner Promo Akhir Tahun','Toko Makmur','Digital','Normal','selesai',4,{selesai:D(3),hasil:'Banner 3 ukuran.'}),
-  mk(3,'Kemasan Keripik Tempe','UD Renyah','Packaging','Tinggi','selesai',3,{selesai:D(1),hasil:'Dieline + mockup.'}),
-  mk(4,'Brosur Klinik Gigi','Klinik Sehat','Cetak','Normal','selesai',1,{selesai:now(),hasil:'Brosur lipat tiga.'}),
-  mk(5,'Poster Festival Kuliner','Dinas Pariwisata','Cetak','Tinggi','proses',1),
-  mk(6,'Katalog Produk 2027','CV Mandiri','Cetak','Normal','siap',1),
-  mk(7,'Feed Instagram Bulanan','Butik Ayu','Digital','Rendah','menunggu',0),
-  mk(8,'Label Sambal Botol','Sambal Bu Rini','Packaging','Normal','menunggu',0),
-  mk(9,'Kartu Nama Direksi','PT Nusantara','Cetak','Normal','revisi',2,{rev:1,catatan:'Ganti font dan tambah QR code.'})
- ],log:[{t:now(),m:'Sistem dimulai dengan data contoh.'}]};
+// Struktur State Utama
+let S = { seq: 0, items: [], log: [] };
+
+// Fungsi untuk mengambil data dari Supabase
+async function loadDataFromSupabase() {
+ try {
+  const { data, error } = await supabaseClient.from('desains').select('*');
+  if (error) throw error;
+  
+  S.items = data || [];
+  if (S.items.length > 0) {
+    const nums = S.items.map(i => parseInt(i.id.replace('DSN-', '')) || 0);
+    S.seq = Math.max(...nums);
+  }
+  render();
+ } catch (err) {
+  console.error('Gagal memuat data:', err.message);
+  toast('Gagal terhubung ke database cloud');
+ }
 }
-let S;
-try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}
-if(!S||!S.items)S=seed();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}render()}
-function log(m){S.log.unshift({t:now(),m});S.log=S.log.slice(0,30)}
-function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),2200)}
+
+// Fungsi Simpan/Update data ke Supabase
+async function saveToSupabase(item) {
+ try {
+  const { error } = await supabaseClient.from('desains').upsert(item);
+  if (error) throw error;
+  loadDataFromSupabase();
+ } catch (err) {
+  console.error('Gagal menyimpan:', err.message);
+  toast('Gagal menyimpan ke cloud');
+ }
+}
+
+// Fungsi Hapus data di Supabase
+async function deleteFromSupabase(id) {
+ try {
+  const { error } = await supabaseClient.from('desains').delete().eq('id', id);
+  if (error) throw error;
+  loadDataFromSupabase();
+  toast('Desain dihapus dari cloud');
+ } catch (err) {
+  console.error('Gagal menghapus:', err.message);
+ }
+}
+
+function log(m){
+ S.log.unshift({t:now(),m});
+ S.log=S.log.slice(0,30);
+}
+
+function toast(m){
+ const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('on'),2200);
+}
+
 const badge=s=>`<span class="badge s-${s}">${ST[s]}</span>`;
 const get=id=>S.items.find(x=>x.id===id);
 const cnt=s=>S.items.filter(x=>x.status===s).length;
 
 function route(){
- const p=(location.hash||'#dashboard').slice(1);const pg=['dashboard','buat','daftar','verifikasi','proses'].includes(p)?p:'dashboard';
+ const p=(location.hash||'#dashboard').slice(1);
+ const pg=['dashboard','buat','daftar','verifikasi','proses'].includes(p)?p:'dashboard';
  document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id==='p-'+pg));
  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.p===pg));
  window.scrollTo(0,0);
@@ -146,10 +188,7 @@ function renderDaftar(){
  $('tabel').innerHTML=L.length?`<table><tr><th>Preview</th><th>ID</th><th>Desain</th><th>Klien</th><th>Kategori</th><th>Tenggat</th><th>Verifikasi</th><th>Proses</th><th>Status</th><th></th></tr>${L.map(x=>{
   const ver=x.status==='menunggu'?'Belum':x.status==='revisi'?'Ditolak':'Terverifikasi';
   const pro=x.status==='selesai'?'Selesai':x.status==='proses'?'Dikerjakan':x.status==='siap'?'Antre':'-';
-  
-  // Menampilkan thumbnail gambar jika ada, atau teks '-' jika belum ada
   const thumb = x.img ? `<img src="${x.img}" alt="Preview" style="width:40px;height:40px;object-fit:cover;border-radius:6px;display:block;">` : '-';
-
   return`<tr><td>${thumb}</td><td>${x.id}</td><td><b>${esc(x.nama)}</b>${x.rev?`<br><small style="color:var(--mu)">Revisi ke-${x.rev}</small>`:''}</td><td>${esc(x.klien)}</td><td>${x.kat}</td><td>${fmt(x.dl)}</td><td>${ver}</td><td>${pro}</td><td>${badge(x.status)}</td><td><button class="btn" onclick="edit('${x.id}')">Edit</button></td></tr>`}).join('')}</table>`:'<div class="empty">Tidak ada desain.</div>';
 }
 
@@ -162,8 +201,6 @@ function renderVer(){
     <small>${x.id} · ${esc(x.klien)} · ${x.kat} · Prioritas ${x.pri} · Tenggat ${fmt(x.dl)}</small><br>
     ${esc(x.desk)}
     ${x.rev?`<br><small>Pengajuan ulang setelah revisi ke-${x.rev}</small>`:''}
-    
-    <!-- TAMBAHAN PREVIEW GAMBAR DI SINI -->
     ${x.img ? `<br><img src="${x.img}" alt="Preview Desain" style="max-width:160px;border-radius:8px;margin-top:8px;display:block;">` : ''}
    </div>
    <div class="row">
@@ -175,8 +212,6 @@ function renderVer(){
  const d=S.items.filter(x=>['siap','proses','selesai'].includes(x.status)).slice().reverse();
  $('verDone').innerHTML=d.length?d.map(x=>`<div class="item"><div><b>${esc(x.nama)}</b><br><small>${x.id} · ${esc(x.klien)}</small></div>${badge(x.status)}</div>`).join(''):'<div class="empty">Belum ada.</div>';
 }
-
-
 
 function renderPro(){
  const w=S.items.filter(x=>x.status==='siap'||x.status==='proses');
@@ -197,10 +232,10 @@ $('btnBuat').onclick = () => {
  const fileInput = $('b-img');
  const file = fileInput.files[0];
 
- const simpanData = (imgData = '') => {
+ const prosesSimpan = (imgData = '') => {
   S.seq++;
   const id = 'DSN-' + String(S.seq).padStart(3, '0');
-  S.items.push({
+  const newItem = {
    id,
    nama,
    klien: $('b-klien').value.trim() || '-',
@@ -211,51 +246,95 @@ $('btnBuat').onclick = () => {
    status: 'menunggu',
    dibuat: now(),
    hasil: '',
-   img: imgData, // Menyimpan string base64 gambar di sini
+   img: imgData,
    catatan: '',
-   rev: 0
-  });
+   rev: 0,
+   selesai: null
+  };
   log(`${id} “${nama}” dibuat dan diajukan verifikasi`);
   ['b-nama', 'b-klien', 'b-dl', 'b-desk'].forEach(i => $(i).value = '');
-  fileInput.value = ''; // Reset input file
-  save();
-  toast('Desain tersimpan, menunggu verifikasi');
+  fileInput.value = '';
+  
+  saveToSupabase(newItem);
+  toast('Desain tersimpan ke cloud Supabase');
   location.hash = '#daftar';
  };
 
- // Jika ada file gambar yang dipilih, konversi ke base64
  if (file) {
   const reader = new FileReader();
   reader.onload = e => {
    const im = new Image();
    im.onload = () => {
-    // Kompresi otomatis agar ukuran localStorage tidak cepat penuh (maksimal lebar/tinggi proporsional)
     const c = document.createElement('canvas');
     const k = Math.min(1, 600 / im.width);
     c.width = im.width * k;
     c.height = im.height * k;
     c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-    simpanData(c.toDataURL('image/jpeg', 0.8));
+    prosesSimpan(c.toDataURL('image/jpeg', 0.8));
    };
    im.src = e.target.result;
   };
   reader.readAsDataURL(file);
  } else {
-  simpanData('');
+  prosesSimpan('');
  }
 };
 
-function setuju(id){const x=get(id);x.status='siap';log(`${id} diverifikasi, siap diproses`);save();toast('Desain disetujui')}
+function setuju(id){
+ const x=get(id); x.status='siap'; 
+ log(`${id} diverifikasi, siap diproses`); 
+ saveToSupabase(x); 
+ toast('Desain disetujui');
+}
+
 function tolak(id){
  box(`<h3>Kembalikan untuk revisi</h3><label>Catatan revisi</label><textarea id="cat" rows="3" placeholder="Apa yang perlu diperbaiki?"></textarea><div class="row" style="margin-top:14px"><button class="btn d" id="ok">Kembalikan</button><button class="btn" onclick="closeM()">Batal</button></div>`);
- $('ok').onclick=()=>{const x=get(id);x.status='revisi';x.rev++;x.catatan=$('cat').value.trim();log(`${id} dikembalikan untuk revisi`);closeM();save();toast('Dikembalikan untuk revisi')};
+ $('ok').onclick=()=>{
+  const x=get(id); x.status='revisi'; x.rev++; x.catatan=$('cat').value.trim(); 
+  log(`${id} dikembalikan untuk revisi`); 
+  closeM(); 
+  saveToSupabase(x); 
+  toast('Dikembalikan untuk revisi');
+ };
 }
-function mulai(id){get(id).status='proses';log(`${id} mulai diproses`);save();toast('Proses dimulai')}
-function upl(id,el){const f=el.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{
- const im=new Image();im.onload=()=>{const c=document.createElement('canvas'),k=Math.min(1,500/im.width);c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);
-  const x=get(id);x.hasil=$('h-'+id).value;x.img=c.toDataURL('image/jpeg',.7);save()};im.src=r.result};r.readAsDataURL(f)}
-function selesai(id){const x=get(id);x.hasil=$('h-'+id).value.trim();x.status='selesai';x.selesai=now();log(`${id} “${x.nama}” selesai`);save();toast('Desain selesai')}
-function mintaRev(id){const x=get(id);x.hasil=$('h-'+id).value.trim();x.status='revisi';x.rev++;x.catatan='Hasil proses perlu perbaikan.';log(`${id} diminta revisi dari proses`);save();toast('Dikirim ke revisi')}
+
+function mulai(id){
+ const x=get(id); x.status='proses'; 
+ log(`${id} mulai diproses`); 
+ saveToSupabase(x); 
+ toast('Proses dimulai');
+}
+
+function upl(id,el){
+ const f=el.files[0]; if(!f)return; 
+ const r=new FileReader(); 
+ r.onload=()=>{
+  const im=new Image(); 
+  im.onload=()=>{
+   const c=document.createElement('canvas'),k=Math.min(1,500/im.width);
+   c.width=im.width*k; c.height=im.height*k; 
+   c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+   const x=get(id); x.hasil=$('h-'+id).value; x.img=c.toDataURL('image/jpeg',.7); 
+   saveToSupabase(x);
+  }; 
+  im.src=r.result;
+ }; 
+ r.readAsDataURL(f);
+}
+
+function selesai(id){
+ const x=get(id); x.hasil=$('h-'+id).value.trim(); x.status='selesai'; x.selesai=now(); 
+ log(`${id} “${x.nama}” selesai`); 
+ saveToSupabase(x); 
+ toast('Desain selesai');
+}
+
+function mintaRev(id){
+ const x=get(id); x.hasil=$('h-'+id).value.trim(); x.status='revisi'; x.rev++; x.catatan='Hasil proses perlu perbaikan.'; 
+ log(`${id} diminta revisi dari proses`); 
+ saveToSupabase(x); 
+ toast('Dikirim ke revisi');
+}
 
 function edit(id){
  const x=get(id);
@@ -267,20 +346,26 @@ function edit(id){
  <div><label>Deadline</label><input type="date" id="e-dl" value="${x.dl||''}"></div>
  <div class="w"><label>Deskripsi</label><textarea id="e-desk" rows="3">${esc(x.desk)}</textarea></div></div>
  <div class="row" style="margin-top:14px"><button class="btn p" id="sv">Simpan</button>${x.status==='revisi'?'<button class="btn g" id="aj">Simpan &amp; ajukan ulang</button>':''}<button class="btn d" id="del">Hapus</button><button class="btn" onclick="closeM()">Tutup</button></div><div id="cf"></div>`);
+ 
  const apply=()=>{x.nama=$('e-nama').value.trim()||x.nama;x.klien=$('e-klien').value;x.kat=$('e-kat').value;x.pri=$('e-pri').value;x.dl=$('e-dl').value;x.desk=$('e-desk').value};
- $('sv').onclick=()=>{apply();log(`${id} diedit`);closeM();save();toast('Perubahan disimpan')};
- if($('aj'))$('aj').onclick=()=>{apply();x.status='menunggu';log(`${id} diajukan ulang untuk verifikasi`);closeM();save();toast('Diajukan ulang')};
- $('del').onclick=()=>{$('cf').innerHTML=`<p style="color:var(--c4)">Hapus “${esc(x.nama)}” secara permanen? Data akan hilang dari semua menu.</p><div class="row"><button class="btn d" id="yes">Ya, hapus</button><button class="btn" id="no">Tidak</button></div>`;
+ 
+ $('sv').onclick=()=>{apply();log(`${id} diedit`);closeM();saveToSupabase(x);toast('Perubahan disimpan')};
+ if($('aj'))$('aj').onclick=()=>{apply();x.status='menunggu';log(`${id} diajukan ulang untuk verifikasi`);closeM();saveToSupabase(x);toast('Diajukan ulang')};
+ $('del').onclick=()=>{$('cf').innerHTML=`<p style="color:var(--c4)">Hapus “${esc(x.nama)}” secara permanen? Data akan hilang dari cloud.</p><div class="row"><button class="btn d" id="yes">Ya, hapus</button><button class="btn" id="no">Tidak</button></div>`;
   $('no').onclick=()=>$('cf').innerHTML='';
-  $('yes').onclick=()=>{S.items=S.items.filter(i=>i.id!==id);log(`${id} dihapus`);closeM();save();toast('Desain dihapus')}};
+  $('yes').onclick=()=>{deleteFromSupabase(id);closeM();};
+ };
 }
+
 function box(h){$('mb').innerHTML=h;$('m').classList.add('on')}
 function closeM(){$('m').classList.remove('on')}
 $('m').onclick=e=>{if(e.target.id==='m')closeM()};
 $('q').oninput=renderDaftar;
 $('fs').innerHTML+=Object.keys(ST).map(k=>`<option value="${k}">${ST[k]}</option>`).join('');
 $('fs').onchange=renderDaftar;
-route();render();
+
+route();
+loadDataFromSupabase(); // Memuat data langsung dari Supabase saat aplikasi dibuka
 </script>
 </body>
 </html>
